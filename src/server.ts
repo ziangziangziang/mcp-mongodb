@@ -149,51 +149,6 @@ export function buildMongoMcpServer(
   }
 
   // ---- Tool 0: list databases ----
-  server.registerResource(
-    "query_guide",
-    "mongodb://guide/query",
-    {
-      description: "Quick reference for MongoDB databases. Use database-specific help prompts for detailed guidance.",
-      mimeType: "text/markdown",
-    },
-    async () => {
-      const adminDb = client.db().admin();
-      const { databases } = await adminDb.listDatabases();
-      const filteredDbs = databases.filter((db) => 
-        isDatabaseAllowed(db.name, allowedDbs, disallowedDbs)
-      );
-
-      return {
-        contents: [
-          {
-            uri: "mongodb://guide/query",
-            mimeType: "text/markdown",
-            text: `# MongoDB Quick Reference
-
-## Available Databases
-${filteredDbs.map(db => `- **${db.name}**${db.name === 'lsf_research' ? ' - HPC cluster data' : ''}${db.name === 'ADMirror' ? ' - User identity' : ''}`).join('\n')}
-
-## 🔑 Which Database?
-- **People questions** ("who is...", "find user", "works in...") → **ADMirror**
-- **Cluster questions** (GPU usage, jobs, performance) → **lsf_research**
-
-## Getting Help
-For detailed field names, query examples, and patterns:
-- **For user/identity queries**: Call \`help_ADMirror\` prompt
-- **For cluster/GPU queries**: Call \`help_lsf_research\` prompt
-
-## Basic Tools
-- \`list_collections({database})\` - See collections
-- \`sample_documents({database, collection})\` - See data examples
-- \`query({database, collection, filter})\` - Simple queries
-- \`aggregation({database, collection, pipeline})\` - Complex analytics`,
-          },
-        ],
-      };
-    }
-  );
-
-  // ---- Tool 0: list databases ----
   server.registerTool(
     "list_databases",
     {

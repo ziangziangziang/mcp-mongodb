@@ -1,6 +1,16 @@
 # ADMirror Database - User Identity
 
+⚠️ **YOU MUST USE THIS DATABASE** for any question about people, names, departments, or users.
+
 **Purpose**: Find people, user accounts, organizational structure
+
+**Question Triggers** - Use ADMirror when you see:
+- "Who is [NAME]" or "Find [NAME]"
+- "Who works in [DEPARTMENT]"
+- "[NAME] in [DEPARTMENT]" 
+- "What's [NAME]'s email/username"
+- "Who reports to [NAME]"
+- Any question about a person's identity or role
 
 ## Key Fields
 - `cn`: Full name "{LastName, FirstName}" - **Use for name searches**

@@ -1,10 +1,24 @@
 # MongoDB MCP Quick Start
 
+⚠️ **CRITICAL**: This system contains data about people, users, and clusters in MongoDB databases. You MUST query these databases to answer questions - do not say "I don't have information".
+
 **Current time**: {CURRENT_TIME}
 **Current epoch**: {CURRENT_EPOCH}
 
 ## Available Databases
 {DATABASES}
+
+## When to Use Database Queries
+
+**ALWAYS query ADMirror database when asked about:**
+- People ("who is...", "find person X")
+- Departments/teams ("who works in...")
+- Contact info (email, phone, username)
+- Organizational structure
+
+**ALWAYS query lsf_research database when asked about:**
+- GPU usage, cluster jobs
+- System performance, job history
 
 ## Quick Guide
 1. Use `list_collections({database})` to see collections

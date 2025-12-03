@@ -56,9 +56,7 @@ This is intentionally small and straightforward so you can understand every line
 
 * Node.js 18+
 * MongoDB (local or hosted, e.g., Atlas)
-* Visual Studio Code 1.99.0+ with the GitHub Copilot and Copilot Chat extensions installed
-* GitHub Copilot with Copilot Chat enabled
-* If in an organization: MCP policy enabled by your admin, if required
+* MCP-capable client (e.g., GitHub Copilot Chat in VS Code, or codex)
 
 ## Setup
 
@@ -116,11 +114,11 @@ npm run start:stdio
 
 ## Integrating with GitHub Copilot Chat (VS Code)
 
-You can configure this MCP server either per-repository or globally in VS Code.
+You can configure this MCP server either per-repository or globally in VS Code. You will open up the setting by `CMD+,`, set `chat.mcp.access` to `all`.
+If your VS code is configured by your organization, you may need to ask your admin to change this configuration.
 
-The simplest “hello world” setup is per-repository.
 
-> Note: Copilot expects stdio transports. Use the stdio entrypoint (`npm run start:stdio` / `node dist/server.js`) for the VS Code configuration below, even though the default runtime is HTTP.
+> Note: Copilot supports stdio transports and streamableHTTP transports. This example uses stdio for simplicity. Use the stdio entrypoint (`npm run start:stdio` / `node dist/server.js`) for the VS Code configuration below, even though the default runtime is HTTP.
 
 ### 1. Add `.vscode/mcp.json`
 
@@ -170,13 +168,12 @@ You can confirm it is configured by running:
 
 Now you can use the tools in natural language. Example prompts:
 
-* `Use mongodb.list_collections to show me all collections in the "mydb" database.`
-* `Use mongodb.get_collection_schema for the "orders" collection in "mydb" and propose REST endpoints that match this schema.`
-* `Use mongodb.sample_documents from the "users" collection in "mydb" and infer what fields should be required when creating a user.`
-* `Use mongodb.query to find all users in "mydb" where age is greater than 18, sorted by name.`
-* `Use mongodb.aggregation to group orders by status in "mydb" and count how many orders are in each status.`
+* `How many "john" are there in the department "Information Service"?`
+* `List top 5 GPU users on the research cluster in the last month.`
 
-## Running the MCP server over HTTP (stateless streamable)
+## Use the tools in codex
+
+Running the MCP server over HTTP (stateless streamable)
 
 The default server uses the stateless streamable HTTP transport at `/mcp`.
 
@@ -185,9 +182,49 @@ npm run build
 PORT=3000 npm start
 ```
 
-POST requests to `/mcp` expect MCP JSON-RPC payloads. `GET` and `DELETE` respond with 405.
+Add the following to ~/.codex/config.toml:
 
-The agent should call the MCP tools, read the results, and use them to answer your request.
+```toml
+[mcp_servers.mongodb-ro]
+url = "http://localhost:3000/mcp"
+```
+
+Or interactively, in the Codex cli:
+
+```shell
+codex mcp add mongodb-ro http://localhost:3000/mcp
+```
+
+Confirm the server is added:
+
+```shell
+codex mcp list
+```
+
+### Example
+It's pretty fun to chat with codex in your terminal.
+
+```shell
+zziang@L230806 Agents % codex
+› how many johns are there in the Information Service?
+
+
+• I’m planning to build a MongoDB aggregation pipeline that matches department and cn fields with regex filters,
+  then counts the matching documents. This approach should keep the query simple and efficient.
+
+• Called
+  └ mongodb-ro.aggregation({"database":"ADMirror","collection":"data","pipeline":[{"$match":{"cn":
+        {"$regex":"John","$options":"i"},"department":{"$regex":"Information Service","$options":"i"}}},
+        {"$count":"count"}]})
+    {"database": "ADMirror", "collection": "data", "pipeline": [{"$match": {"cn": {"$regex": "John", "$options":
+        "i"}, "department": {"$regex": "Information Service", "$options": "i"}}}, {"$count": "count"}],
+        "resultCount": 1, "results": [{"count": 21}]}
+
+─ Worked for 7s ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+• There are 21 people with “John” in their name in Information Services.
+
+```
 
 ## Tools (current behavior)
 

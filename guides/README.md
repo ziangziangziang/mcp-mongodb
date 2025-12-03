@@ -1,6 +1,6 @@
-# Prompts Directory
+# Guides Directory
 
-This directory contains external prompt and resource files that are dynamically loaded by the MongoDB MCP server.
+This directory (previously `prompts/`) contains external prompt and resource files that are dynamically loaded by the MongoDB MCP server.
 
 ## Structure
 
@@ -42,7 +42,12 @@ The following placeholders are automatically replaced when prompts/resources are
 - `{MONTH_AGO_EPOCH}` - Epoch timestamp for 1 month ago
 - `{DATABASES}` - List of available databases (markdown format)
 
-## Adding New Prompts
+## Default Layout
+
+- Prompt: **`guide`** (file: `guide.md`) — quick routing and usage.
+- Resource: **`reference`** (file: `reference.md`) — full detail, fields, and examples. Search it with the `search_resource` tool.
+
+## Adding New Prompts/Resources
 
 1. Create a new `.md` file in this directory
 2. Add an entry to `prompts.json` under `prompts` or `resources`

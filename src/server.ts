@@ -13,15 +13,20 @@ const __dirname = path.dirname(__filename);
 
 // Helper function to load prompts/resources from external files
 function loadPromptsConfig() {
-  const promptsDir = path.join(__dirname, "..", "prompts");
+  const promptsDir = path.join(__dirname, "..", "guides");
   const configPath = path.join(promptsDir, "prompts.json");
   
   if (!fs.existsSync(configPath)) {
     return { prompts: [], resources: [] };
   }
-  
-  const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-  return config;
+
+  try {
+    const raw = fs.readFileSync(configPath, "utf-8");
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Failed to parse prompts.json; skipping dynamic prompts/resources:", err);
+    return { prompts: [], resources: [] };
+  }
 }
 
 function replacePlaceholders(text: string, replacements: Record<string, string>): string {
@@ -53,7 +58,7 @@ export function buildMongoMcpServer(
 
   // Load prompts/resources configuration
   const config = loadPromptsConfig();
-  const promptsDir = path.join(__dirname, "..", "prompts");
+  const promptsDir = path.join(__dirname, "..", "guides");
 
   // Dynamic placeholders generator
   const getPlaceholders = async () => {
@@ -62,7 +67,15 @@ export function buildMongoMcpServer(
     const weekAgoEpoch = currentEpoch - 7 * 24 * 3600;
     const monthAgoEpoch = currentEpoch - 30 * 24 * 3600;
     const currentTime = new Date(now).toISOString();
-    const databases = await getDatabaseList(client, allowedDbs, disallowedDbs);
+    let databases: string;
+
+    try {
+      databases = await getDatabaseList(client, allowedDbs, disallowedDbs);
+    } catch (err) {
+      // Keep prompts usable even if listDatabases is unavailable
+      console.error("Failed to list databases for prompt placeholders:", err);
+      databases = "- (databases unavailable)";
+    }
 
     return {
       CURRENT_TIME: currentTime,
@@ -148,12 +161,90 @@ export function buildMongoMcpServer(
     );
   }
 
+  // ---- Tool: search_resource ----
+  server.registerTool(
+    "search_resource",
+    {
+      title: "Search Resource",
+      description: "Search configured resource markdown for a query string (defaults to all resources).",
+      inputSchema: z.object({
+        query: z.string().min(1).describe("Text to search for"),
+        resources: z.array(z.string()).optional().describe("Resource names to search (defaults to all)"),
+        caseSensitive: z.boolean().optional().default(false).describe("Whether the search is case-sensitive"),
+        maxResults: z.number().optional().default(50).describe("Maximum matches per resource"),
+      }),
+    },
+    async ({ query, resources, caseSensitive = false, maxResults = 50 }) => {
+      const resourceList = (config.resources || []).filter((res: any) =>
+        !resources || resources.length === 0 ? true : resources.includes(res.name)
+      );
+
+      if (resourceList.length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ error: "No matching resources to search." }, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      const placeholders = await getPlaceholders();
+      const needle = caseSensitive ? query : query.toLowerCase();
+      const maxHits = Math.max(1, Math.min(maxResults, 200));
+      const results = [];
+
+      for (const res of resourceList) {
+        const filePath = path.join(promptsDir, res.file);
+        if (!fs.existsSync(filePath)) {
+          results.push({
+            resource: res.name,
+            error: `Resource file not found: ${res.file}`,
+          });
+          continue;
+        }
+
+        const raw = fs.readFileSync(filePath, "utf-8");
+        const processed = replacePlaceholders(raw, placeholders);
+        const lines = processed.split(/\r?\n/);
+        const matches: Array<{ line: number; text: string }> = [];
+
+        for (let i = 0; i < lines.length && matches.length < maxHits; i++) {
+          const line = lines[i];
+          if (!line) continue;
+          const haystack = caseSensitive ? line : line.toLowerCase();
+          if (haystack.includes(needle)) {
+            matches.push({ line: i + 1, text: line.trimEnd() });
+          }
+        }
+
+        results.push({
+          resource: res.name,
+          file: res.file,
+          matchCount: matches.length,
+          matches,
+        });
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ query, results }, null, 2),
+          },
+        ],
+      };
+    }
+  );
+
   // ---- Tool 0: list databases ----
   server.registerTool(
     "list_databases",
     {
       title: "List Databases",
-      description: "List all MongoDB databases. IMPORTANT: Before using any tools, read the 'query_guide' resource for critical information about database structure and query patterns.",
+      description: "List all MongoDB databases. IMPORTANT: Before using any tools, read the 'reference' resource (and search it) for database structure and query patterns.",
       inputSchema: z.object({}),
     },
     async () => {
@@ -278,7 +369,7 @@ export function buildMongoMcpServer(
     "query",
     {
       title: "Query Documents",
-      description: "Query documents from a MongoDB collection. For GPU/cluster queries, use lsf_research database with jobConfig collection (see query_guide resource for field details and examples).",
+      description: "Query documents from a MongoDB collection. For GPU/cluster queries, use lsf_research.jobConfig (see 'reference' resource for fields/examples).",
       inputSchema: z.object({
         database: z.string().describe("The name of the database"),
         collection: z.string().describe("The name of the collection"),
@@ -321,7 +412,7 @@ export function buildMongoMcpServer(
     "aggregation",
     {
       title: "Aggregation Pipeline",
-      description: "Run MongoDB aggregation for analytics and grouping. For 'most active GPU user' queries: use lsf_research.jobConfig with $match (filter GPU jobs), $group (by user), $sort, $limit. See query_guide resource for complete examples with current epoch timestamps.",
+      description: "Run MongoDB aggregation for analytics and grouping. For 'most active GPU user' queries: use lsf_research.jobConfig with $match/$group/$sort/$limit. See 'reference' resource for complete examples with epoch anchors.",
       inputSchema: z.object({
         database: z.string().describe("The name of the database"),
         collection: z.string().describe("The name of the collection"),

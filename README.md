@@ -10,7 +10,7 @@ It is designed to be:
 
 ## What this server does
 
-The server connects to a MongoDB database and exposes six MCP tools:
+The server connects to a MongoDB database and exposes seven MCP tools:
 
 1. `list_databases`
    Lists all accessible databases.
@@ -29,6 +29,9 @@ The server connects to a MongoDB database and exposes six MCP tools:
 
 6. `aggregation`
    Executes MongoDB aggregation pipelines for complex data analysis and transformations.
+
+7. `search_resource`
+   Searches configured resource markdown files for query strings to help agents find relevant documentation.
 
 **Agent Guidance System:**
 
@@ -190,6 +193,22 @@ The agent should call the MCP tools, read the results, and use them to answer yo
 
 These descriptions are consistent with the implementation in `src/server.ts`.
 
+### `search_resource`
+
+* Input:
+  * `query` (string, required) - Text to search for
+  * `resources` (array of strings, optional) - Resource names to search (defaults to all)
+  * `caseSensitive` (boolean, optional, default false) - Whether search is case-sensitive
+  * `maxResults` (number, optional, default 50) - Maximum matches per resource
+* Behavior:
+  * Searches configured resource markdown files for the query string.
+  * Returns matching lines with line numbers from each resource.
+  * Supports template variable substitution in searched content.
+* Typical usage:
+  * Find relevant documentation sections quickly.
+  * Locate query examples and field names.
+  * Help agents discover routing logic and patterns.
+
 ### `list_databases`
 
 * Input: None
@@ -291,7 +310,7 @@ This server is database-agnostic and easily customizable through external prompt
 
 ### Adding Database-Specific Guidance
 
-1. **Create a new help file** in `prompts/` directory (e.g., `help_mydb.md`)
+1. **Create a new help file** in `guides/` directory (e.g., `help_mydb.md`)
 2. **Add your guidance** with field names, query examples, and patterns
 3. **Use template variables** for dynamic content:
    - `{CURRENT_EPOCH}` - Current UNIX timestamp
@@ -299,7 +318,7 @@ This server is database-agnostic and easily customizable through external prompt
    - `{MONTH_AGO_EPOCH}` - Timestamp for 1 month ago
    - `{DATABASES}` - List of available databases
    - `{CURRENT_TIME}` - Current time in ISO format
-4. **Register in `prompts/prompts.json`**:
+4. **Register in `guides/prompts.json`**:
    ```json
    {
      "prompts": [
@@ -314,11 +333,11 @@ This server is database-agnostic and easily customizable through external prompt
    ```
 5. **Rebuild**: `npm run build`
 
-See `prompts/README.md` for detailed documentation.
+See `guides/README.md` for detailed documentation.
 
 ### Example: Customizing for E-commerce Database
 
-Create `prompts/help_ecommerce.md`:
+Create `guides/help_ecommerce.md`:
 ```markdown
 # E-commerce Database Help
 
@@ -340,7 +359,7 @@ query({
 \`\`\`
 ```
 
-Add to `prompts/prompts.json` and rebuild - agents will automatically discover and use your guidance!
+Add to `guides/prompts.json` and rebuild - agents will automatically discover and use your guidance!
 
 ## Extending this server
 
@@ -349,11 +368,11 @@ If you modify or extend the server:
 * Keep control flow simple and direct.
 * Add tools only when they serve clear agent use cases.
 * Update this README whenever you add or change tools or behavior in a meaningful way.
-* For domain-specific guidance, use the `prompts/` directory instead of modifying code.
+* For domain-specific guidance, use the `guides/` directory instead of modifying code.
 
 Common next steps:
 
-* Add custom prompts for your database schema in `prompts/`
+* Add custom prompts for your database schema in `guides/`
 * Add validation tools for specific data patterns
 * Generate TypeScript types, Zod schemas, or OpenAPI fragments from `get_collection_schema`
 * Add monitoring or analytics endpoints

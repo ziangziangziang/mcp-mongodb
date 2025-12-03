@@ -1,0 +1,20 @@
+{
+  "prompts": [
+    {
+      "name": "guide",
+      "title": "MongoDB MCP Guide",
+      "description": "Routing + quick instructions; use the reference resource for details",
+      "file": "guide.md"
+    }
+  ],
+  "resources": [
+    {
+      "name": "reference",
+      "uri": "mongodb://reference",
+      "title": "MongoDB Reference",
+      "description": "Complete reference with routing, fields, and query examples for ADMirror and lsf_research",
+      "mimeType": "text/markdown",
+      "file": "reference.md"
+    }
+  ]
+}

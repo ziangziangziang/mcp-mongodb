@@ -1,0 +1,36 @@
+{
+  "name": "mcp-mongodb",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A minimal Model Context Protocol (MCP) server that exposes a MongoDB database to MCP-aware agents such as GitHub Copilot Chat in Agent mode.",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/httpServer.js",
+    "start:http": "node dist/httpServer.js",
+    "start:stdio": "node dist/server.js",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest"
+  },
+  "bin": {
+    "mcp-mongodb": "dist/server.js"
+  },
+  "keywords": [],
+  "author": "zziang@stjude.org",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.23.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.0",
+    "mongodb": "^7.0.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.10.1",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

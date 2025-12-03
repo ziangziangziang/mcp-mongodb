@@ -205,7 +205,7 @@ codex mcp list
 It's pretty fun to chat with codex in your terminal.
 
 ```shell
-zziang@L230806 Agents % codex
+zziang@laptop Agents % codex
 › how many johns are there in the Information Service?
 
 

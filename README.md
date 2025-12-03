@@ -10,22 +10,33 @@ It is designed to be:
 
 ## What this server does
 
-The server connects to a MongoDB database and exposes five MCP tools:
+The server connects to a MongoDB database and exposes six MCP tools:
 
-1. `list_collections`
+1. `list_databases`
+   Lists all accessible databases.
+
+2. `list_collections`
    Lists all collections in the specified database.
 
-2. `get_collection_schema`
+3. `get_collection_schema`
    Samples documents from a collection and infers a basic schema from field names and primitive types.
 
-3. `sample_documents`
+4. `sample_documents`
    Returns a small set of example documents from a collection.
 
-4. `query`
+5. `query`
    Queries documents with optional filter, projection, sort, and limit parameters.
 
-5. `aggregation`
+6. `aggregation`
    Executes MongoDB aggregation pipelines for complex data analysis and transformations.
+
+**Agent Guidance System:**
+
+The server also provides dynamic prompts and resources to guide agents:
+
+- **Resources** (always available): Quick reference guides with database information, query patterns, and routing logic
+- **Prompts** (discoverable): Database-specific help with detailed field documentation, query examples, and best practices
+- **Template variables**: Live epoch timestamps and database lists automatically injected into guidance
 
 Agents can use these tools to:
 
@@ -179,6 +190,12 @@ The agent should call the MCP tools, read the results, and use them to answer yo
 
 These descriptions are consistent with the implementation in `src/server.ts`.
 
+### `list_databases`
+
+* Input: None
+* Behavior: Returns a list of all databases that are allowed based on the `ALLOWED_DB_NAME` and `DISALLOWED_DB_NAME` configuration.
+* Typical usage: Discover which databases are available for querying.
+
 ### `list_collections`
 
 * Input:
@@ -268,6 +285,63 @@ This server is intended for development and local workflows.
 
 Agents should treat this server as a source of context, not as a general-purpose database admin surface.
 
+## Customizing for Your Database
+
+This server is database-agnostic and easily customizable through external prompt files:
+
+### Adding Database-Specific Guidance
+
+1. **Create a new help file** in `prompts/` directory (e.g., `help_mydb.md`)
+2. **Add your guidance** with field names, query examples, and patterns
+3. **Use template variables** for dynamic content:
+   - `{CURRENT_EPOCH}` - Current UNIX timestamp
+   - `{WEEK_AGO_EPOCH}` - Timestamp for 1 week ago
+   - `{MONTH_AGO_EPOCH}` - Timestamp for 1 month ago
+   - `{DATABASES}` - List of available databases
+   - `{CURRENT_TIME}` - Current time in ISO format
+4. **Register in `prompts/prompts.json`**:
+   ```json
+   {
+     "prompts": [
+       {
+         "name": "help_mydb",
+         "title": "MyDB Help",
+         "description": "Guidance for querying MyDB",
+         "file": "help_mydb.md"
+       }
+     ]
+   }
+   ```
+5. **Rebuild**: `npm run build`
+
+See `prompts/README.md` for detailed documentation.
+
+### Example: Customizing for E-commerce Database
+
+Create `prompts/help_ecommerce.md`:
+```markdown
+# E-commerce Database Help
+
+## Collections
+- orders: Customer orders (orderId, customerId, total, status)
+- products: Product catalog (sku, name, price, stock)
+
+## Query Examples
+**Find pending orders from last week:**
+\`\`\`javascript
+query({
+  database: "ecommerce",
+  collection: "orders",
+  filter: {
+    status: "pending",
+    createdAt: {$gt: {WEEK_AGO_EPOCH}}
+  }
+})
+\`\`\`
+```
+
+Add to `prompts/prompts.json` and rebuild - agents will automatically discover and use your guidance!
+
 ## Extending this server
 
 If you modify or extend the server:
@@ -275,11 +349,13 @@ If you modify or extend the server:
 * Keep control flow simple and direct.
 * Add tools only when they serve clear agent use cases.
 * Update this README whenever you add or change tools or behavior in a meaningful way.
+* For domain-specific guidance, use the `prompts/` directory instead of modifying code.
 
 Common next steps:
 
-* Add a read-only query tool that accepts a filter and projection object with tight validation.
-* Add a tool that summarizes inferred schemas for all collections.
-* Generate TypeScript types, Zod schemas, or OpenAPI fragments from `get_collection_schema`.
+* Add custom prompts for your database schema in `prompts/`
+* Add validation tools for specific data patterns
+* Generate TypeScript types, Zod schemas, or OpenAPI fragments from `get_collection_schema`
+* Add monitoring or analytics endpoints
 
 Keep the implementation straightforward so that both humans and agents can reason about it.

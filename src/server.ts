@@ -4,6 +4,42 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as z from "zod";
 import { isDatabaseAllowed, parseDbNames, withDatabaseAccess } from "./utils.js";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Helper function to load prompts/resources from external files
+function loadPromptsConfig() {
+  const promptsDir = path.join(__dirname, "..", "prompts");
+  const configPath = path.join(promptsDir, "prompts.json");
+  
+  if (!fs.existsSync(configPath)) {
+    return { prompts: [], resources: [] };
+  }
+  
+  const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  return config;
+}
+
+function replacePlaceholders(text: string, replacements: Record<string, string>): string {
+  let result = text;
+  for (const [key, value] of Object.entries(replacements)) {
+    result = result.replaceAll(`{${key}}`, value);
+  }
+  return result;
+}
+
+async function getDatabaseList(client: MongoClient, allowedDbs: string[], disallowedDbs: string[]) {
+  const adminDb = client.db().admin();
+  const { databases } = await adminDb.listDatabases();
+  const filteredDbs = databases.filter((db) => 
+    isDatabaseAllowed(db.name, allowedDbs, disallowedDbs)
+  );
+  return filteredDbs.map(db => `- **${db.name}**`).join('\n');
+}
 
 export function buildMongoMcpServer(
   client: MongoClient,
@@ -15,7 +51,104 @@ export function buildMongoMcpServer(
     version: "1.0.0",
   });
 
-  // ---- Resource: Quick Query Guide (SHORT) ----
+  // Load prompts/resources configuration
+  const config = loadPromptsConfig();
+  const promptsDir = path.join(__dirname, "..", "prompts");
+
+  // Dynamic placeholders generator
+  const getPlaceholders = async () => {
+    const now = Date.now();
+    const currentEpoch = Math.floor(now / 1000);
+    const weekAgoEpoch = currentEpoch - 7 * 24 * 3600;
+    const monthAgoEpoch = currentEpoch - 30 * 24 * 3600;
+    const currentTime = new Date(now).toISOString();
+    const databases = await getDatabaseList(client, allowedDbs, disallowedDbs);
+
+    return {
+      CURRENT_TIME: currentTime,
+      CURRENT_EPOCH: String(currentEpoch),
+      WEEK_AGO_EPOCH: String(weekAgoEpoch),
+      MONTH_AGO_EPOCH: String(monthAgoEpoch),
+      DATABASES: databases,
+    };
+  };
+
+  // Register resources dynamically
+  for (const resource of config.resources || []) {
+    server.registerResource(
+      resource.name,
+      resource.uri,
+      {
+        description: resource.description,
+        mimeType: resource.mimeType || "text/markdown",
+      },
+      async () => {
+        const filePath = path.join(promptsDir, resource.file);
+        if (!fs.existsSync(filePath)) {
+          return {
+            contents: [{
+              uri: resource.uri,
+              mimeType: resource.mimeType || "text/markdown",
+              text: `Resource file not found: ${resource.file}`,
+            }],
+          };
+        }
+
+        const content = fs.readFileSync(filePath, "utf-8");
+        const placeholders = await getPlaceholders();
+        const processedContent = replacePlaceholders(content, placeholders);
+
+        return {
+          contents: [{
+            uri: resource.uri,
+            mimeType: resource.mimeType || "text/markdown",
+            text: processedContent,
+          }],
+        };
+      }
+    );
+  }
+
+  // Register prompts dynamically
+  for (const prompt of config.prompts || []) {
+    server.registerPrompt(
+      prompt.name,
+      {
+        title: prompt.title,
+        description: prompt.description,
+      },
+      async () => {
+        const filePath = path.join(promptsDir, prompt.file);
+        if (!fs.existsSync(filePath)) {
+          return {
+            messages: [{
+              role: "user" as const,
+              content: {
+                type: "text" as const,
+                text: `Prompt file not found: ${prompt.file}`,
+              },
+            }],
+          };
+        }
+
+        const content = fs.readFileSync(filePath, "utf-8");
+        const placeholders = await getPlaceholders();
+        const processedContent = replacePlaceholders(content, placeholders);
+
+        return {
+          messages: [{
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: processedContent,
+            },
+          }],
+        };
+      }
+    );
+  }
+
+  // ---- Tool 0: list databases ----
   server.registerResource(
     "query_guide",
     "mongodb://guide/query",
@@ -54,316 +187,6 @@ For detailed field names, query examples, and patterns:
 - \`sample_documents({database, collection})\` - See data examples
 - \`query({database, collection, filter})\` - Simple queries
 - \`aggregation({database, collection, pipeline})\` - Complex analytics`,
-          },
-        ],
-      };
-    }
-  );
-
-  // ---- Prompt: ADMirror Database Help ----
-  server.registerPrompt(
-    "help_ADMirror",
-    {
-      title: "ADMirror Database Help",
-      description: "Detailed guidance for querying user identity data in ADMirror database (people, departments, organizational structure)",
-    },
-    async () => {
-      return {
-        messages: [
-          {
-            role: "user" as const,
-            content: {
-              type: "text" as const,
-              text: `# ADMirror Database - User Identity
-
-**Purpose**: Find people, user accounts, organizational structure
-
-## Key Fields
-- \`cn\`: Full name "{LastName, FirstName}" - **Use for name searches**
-- \`givenName\`: First name
-- \`sn\`: Surname/last name
-- \`uid\`: Username (Linux username)
-- \`department\`: Department name
-- \`title\`: Job title
-- \`mail\`: Email address
-- \`manager\`: Manager DN
-
-## Query Examples
-
-**Find person by name:**
-\`\`\`javascript
-query({
-  database: "ADMirror",
-  collection: "data",
-  filter: {
-    cn: {$regex: "John", $options: "i"}
-  },
-  projection: {cn: 1, uid: 1, mail: 1, department: 1, title: 1, _id: 0},
-  limit: 20
-})
-\`\`\`
-
-**Find by name AND department:**
-\`\`\`javascript
-query({
-  database: "ADMirror",
-  collection: "data",
-  filter: {
-    cn: {$regex: "John", $options: "i"},
-    department: {$regex: "Information Service", $options: "i"}
-  },
-  projection: {cn: 1, uid: 1, mail: 1, department: 1, title: 1, _id: 0},
-  limit: 20
-})
-\`\`\`
-
-**Find all in a department:**
-\`\`\`javascript
-query({
-  database: "ADMirror",
-  collection: "data",
-  filter: {
-    department: {$regex: "Engineering", $options: "i"}
-  },
-  projection: {cn: 1, uid: 1, title: 1, _id: 0},
-  limit: 50
-})
-\`\`\`
-
-**Find by username:**
-\`\`\`javascript
-query({
-  database: "ADMirror",
-  collection: "data",
-  filter: {uid: "jsmith"}
-})
-\`\`\`
-
-## Tips
-- Use \`$regex\` with \`$options: "i"\` for case-insensitive search
-- \`cn\` field is most reliable for name searches
-- Use \`projection\` to limit returned fields
-- Set appropriate \`limit\` to avoid too many results`,
-            },
-          },
-        ],
-      };
-    }
-  );
-
-  // ---- Prompt: lsf_research Database Help ----
-  server.registerPrompt(
-    "help_lsf_research",
-    {
-      title: "lsf_research Database Help",
-      description: "Detailed guidance for querying HPC cluster data in lsf_research database (GPU usage, jobs, hosts, performance metrics)",
-    },
-    async () => {
-      return {
-        messages: [
-          {
-            role: "user" as const,
-            content: {
-              type: "text" as const,
-              text: `# lsf_research Database - HPC Cluster Data
-
-**Purpose**: GPU usage, job data, cluster performance metrics
-
-## Key Collection: jobConfig
-**Use for**: Job history, GPU usage analysis, user activity
-
-**Important Fields:**
-- \`user\`: Username (STRING)
-- \`gpus\`: Number of GPUs used (NUMBER)
-- \`submitTime\`: Job submit time (UNIX epoch seconds)
-- \`runTime\`: Job duration in seconds (NUMBER)
-- \`queue\`: Queue name (STRING)
-- \`status\`: Job status (STRING)
-- \`jobId\`: Job ID (NUMBER)
-
-**Time Calculations:**
-- Current epoch: ${Math.floor(Date.now()/1000)}
-- 1 week ago: ${Math.floor(Date.now()/1000) - 7*24*3600}
-- 1 month ago: ${Math.floor(Date.now()/1000) - 30*24*3600}
-
-## Query Examples
-
-**Most active GPU user (last week):**
-\`\`\`javascript
-aggregation({
-  database: "lsf_research",
-  collection: "jobConfig",
-  pipeline: [
-    {
-      $match: {
-        submitTime: {$gt: ${Math.floor(Date.now()/1000) - 7*24*3600}},
-        gpus: {$gt: 0}
-      }
-    },
-    {
-      $group: {
-        _id: "$user",
-        totalJobs: {$sum: 1},
-        totalGPUs: {$sum: "$gpus"},
-        totalRunTime: {$sum: "$runTime"}
-      }
-    },
-    {$sort: {totalJobs: -1}},
-    {$limit: 1}
-  ]
-})
-\`\`\`
-
-**Find GPU jobs by user:**
-\`\`\`javascript
-query({
-  database: "lsf_research",
-  collection: "jobConfig",
-  filter: {
-    user: "username",
-    gpus: {$gt: 0}
-  },
-  sort: {submitTime: -1},
-  limit: 20
-})
-\`\`\`
-
-**GPU usage statistics by queue:**
-\`\`\`javascript
-aggregation({
-  database: "lsf_research",
-  collection: "jobConfig",
-  pipeline: [
-    {$match: {gpus: {$gt: 0}}},
-    {$group: {
-      _id: "$queue",
-      totalJobs: {$sum: 1},
-      avgGPUs: {$avg: "$gpus"},
-      totalRunTime: {$sum: "$runTime"}
-    }},
-    {$sort: {totalJobs: -1}}
-  ]
-})
-\`\`\`
-
-## Other Collections
-- \`gpuConfig\`: GPU inventory (gpuName, hostName, gModel, gTotalMem)
-- \`gpuLoad\`: Time-series GPU metrics (gUsedMem, gUt, timestamp)
-- \`hostConfig\`: Host specs (hostName, cores, maxCpus, maxMem)
-- \`runningJobConfig\`: Currently running jobs
-- \`pendingJobConfig\`: Queued jobs
-
-## Tips
-- Always filter GPU jobs with \`{gpus: {$gt: 0}}\`
-- Use \`submitTime\` (epoch seconds) for time filters
-- Use \`aggregation\` for analytics (grouping, counting, stats)
-- Use \`query\` for simple lookups`,
-            },
-          },
-        ],
-      };
-    }
-  );
-
-  // ---- Prompt: Quick Start Guide (Easy to discover) ----
-  server.registerPrompt(
-    "help",
-    {
-      title: "MongoDB Help - Start Here",
-      description: "Get started with querying this MongoDB. Shows available databases, common patterns, and example queries for GPU usage analysis.",
-    },
-    async () => {
-      const adminDb = client.db().admin();
-      const { databases } = await adminDb.listDatabases();
-      const filteredDbs = databases.filter((db) => 
-        isDatabaseAllowed(db.name, allowedDbs, disallowedDbs)
-      );
-
-      return {
-        messages: [
-          {
-            role: "user" as const,
-            content: {
-              type: "text" as const,
-              text: `# MongoDB Quick Start Guide
-
-## Available Databases
-${filteredDbs.map(db => `- **${db.name}**${db.name === 'lsf_research' ? ' ← Use this for HPC cluster/GPU data' : ''}${db.name === 'ADMirror' ? ' ← Use this for finding people/users' : ''}`).join('\n')}
-
-## 🔑 Which Database?
-- **Questions about PEOPLE** ("who is...", "find John", "works in IT") → **ADMirror**
-- **Questions about CLUSTER** (GPU usage, jobs, hosts) → **lsf_research**
-
-## For People/User Questions:
-
-**Database**: ADMirror  
-**Collection**: data  
-**Search Fields**: cn (full name), givenName (first name), sn (last name), department, uid (username)
-
-**Example** (find John in Information Service):
-\`\`\`javascript
-query({
-  database: "ADMirror",
-  collection: "data",
-  filter: {
-    cn: {$regex: "John", $options: "i"},
-    department: {$regex: "Information Service", $options: "i"}
-  },
-  projection: {cn: 1, uid: 1, mail: 1, department: 1, title: 1, _id: 0},
-  limit: 20
-})
-\`\`\`
-
-## For GPU Usage Questions (like "most active GPU user"):
-
-**Database**: lsf_research  
-**Collection**: jobConfig  
-**Key Fields**: user, gpus, submitTime (epoch seconds)
-
-**Example Query** (most active GPU user last week):
-\`\`\`javascript
-aggregation({
-  database: "lsf_research",
-  collection: "jobConfig",
-  pipeline: [
-    {
-      $match: {
-        submitTime: {$gt: ${Math.floor(Date.now()/1000) - 7*24*3600}},
-        gpus: {$gt: 0}
-      }
-    },
-    {
-      $group: {
-        _id: "$user",
-        totalJobs: {$sum: 1},
-        totalGPUs: {$sum: "$gpus"}
-      }
-    },
-    {$sort: {totalJobs: -1}},
-    {$limit: 1}
-  ]
-})
-\`\`\`
-
-Current time info:
-- Now (epoch): ${Math.floor(Date.now()/1000)}
-- 1 week ago: ${Math.floor(Date.now()/1000) - 7*24*3600}
-- 1 month ago: ${Math.floor(Date.now()/1000) - 30*24*3600}
-
-## For User Identity Questions:
-
-**Database**: ADMirror  
-**Collection**: data  
-**Key Fields**: uid (username), cn (full name), sn (surname), givenName (first name), department, title, mail
-
-\`\`\`javascript
-query({
-  database: "ADMirror",
-  collection: "data",
-  filter: {uid: "username"}
-})
-\`\`\``,
-            },
           },
         ],
       };

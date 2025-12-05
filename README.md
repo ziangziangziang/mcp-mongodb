@@ -192,7 +192,7 @@ url = "http://localhost:3000/mcp"
 Or interactively, in the Codex cli:
 
 ```shell
-codex mcp add mongodb-ro http://localhost:3000/mcp
+codex mcp add mongodb-ro --url http://localhost:3000/mcp
 ```
 
 Confirm the server is added:
